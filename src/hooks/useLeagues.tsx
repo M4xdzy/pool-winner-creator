@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from '@/hooks/use-toast';
+import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/context/AuthContext';
 
 export interface League {
@@ -49,6 +49,7 @@ export interface CreateLeagueData {
 export const useLeagues = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
+  const { toast } = useToast();
 
   // Récupère toutes les ligues
   const getLeagues = async (): Promise<{ data: League[] | null; error: any }> => {
@@ -115,11 +116,11 @@ export const useLeagues = () => {
       if (error) throw error;
       
       // Convertir les résultats pour correspondre à l'interface Member
-      const members = data.map(member => {
+      const members: Member[] = data.map(member => {
         return {
           ...member,
           profile: member.profile || { username: 'Utilisateur inconnu', full_name: '', avatar_url: '' },
-          team: member.team || undefined
+          team: member.team?.length > 0 ? member.team[0] : undefined
         };
       });
       
@@ -143,7 +144,7 @@ export const useLeagues = () => {
     try {
       if (!user) throw new Error('Vous devez être connecté pour créer une ligue');
       
-      const newLeagueData = {
+      const newLeague = {
         creator_id: user.id,
         name: leagueData.name,
         description: leagueData.description || '',
@@ -152,11 +153,12 @@ export const useLeagues = () => {
         draft_type: leagueData.draft_type || 'manual',
         is_private: leagueData.is_private || false,
         invitation_code: leagueData.is_private ? Math.random().toString(36).substring(2, 10).toUpperCase() : null,
+        status: 'draft'
       };
 
       const { data, error } = await supabase
         .from('leagues')
-        .insert(newLeagueData)
+        .insert(newLeague)
         .select()
         .single();
 

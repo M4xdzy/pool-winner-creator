@@ -16,13 +16,13 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { useMobile } from '@/hooks/use-mobile';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useAuth } from '@/context/AuthContext';
 import { CreditsDisplay } from '@/components/ui/CreditsDisplay';
 
 export function Navigation() {
   const { pathname } = useLocation();
-  const { isMobile } = useMobile();
+  const { isMobile } = useIsMobile();
   const [isOpen, setIsOpen] = useState(false);
   const { user, signOut } = useAuth();
   
