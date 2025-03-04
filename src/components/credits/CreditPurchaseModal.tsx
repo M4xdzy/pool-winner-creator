@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -30,7 +29,7 @@ export function CreditPurchaseModal({ triggerComponent }: CreditPurchaseModalPro
   const [selectedPackage, setSelectedPackage] = useState('medium');
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { addCredits } = useCredits();
+  const { purchaseCredits } = useCredits();
 
   const handlePurchase = async () => {
     setIsLoading(true);
@@ -39,10 +38,7 @@ export function CreditPurchaseModal({ triggerComponent }: CreditPurchaseModalPro
     if (packageInfo) {
       // Dans une application réelle, vous intégreriez ici un système de paiement comme Stripe
       // Pour cette démo, nous ajoutons simplement les crédits
-      await addCredits(
-        packageInfo.amount, 
-        `Achat de ${packageInfo.amount} crédits - ${packageInfo.description}`
-      );
+      await purchaseCredits(packageInfo.amount);
     }
     
     setIsLoading(false);

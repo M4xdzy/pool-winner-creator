@@ -61,7 +61,16 @@ export const useLeagues = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return { data, error: null };
+      
+      // Ensure the data conforms to the League type
+      const typedData = data?.map(league => ({
+        ...league,
+        draft_type: league.draft_type as 'manual' | 'auto',
+        season_type: league.season_type as 'weekly' | 'monthly' | 'full',
+        status: league.status as 'draft' | 'active' | 'completed'
+      }));
+      
+      return { data: typedData, error: null };
     } catch (error) {
       console.error('Erreur lors de la récupération des ligues:', error);
       toast({
@@ -86,7 +95,16 @@ export const useLeagues = () => {
         .single();
 
       if (error) throw error;
-      return { data, error: null };
+      
+      // Ensure the data conforms to the League type
+      const typedData: League = {
+        ...data,
+        draft_type: data.draft_type as 'manual' | 'auto',
+        season_type: data.season_type as 'weekly' | 'monthly' | 'full',
+        status: data.status as 'draft' | 'active' | 'completed'
+      };
+      
+      return { data: typedData, error: null };
     } catch (error) {
       console.error(`Erreur lors de la récupération de la ligue ${id}:`, error);
       toast({
@@ -104,25 +122,41 @@ export const useLeagues = () => {
   const getLeagueMembers = async (leagueId: string): Promise<{ data: Member[] | null; error: any }> => {
     setIsLoading(true);
     try {
-      const { data, error } = await supabase
+      // First get all members of the league
+      const { data: membersData, error: membersError } = await supabase
         .from('league_members')
-        .select(`
-          *,
-          profile:profiles(username, full_name, avatar_url),
-          team:user_teams(id, name, points, rank)
-        `)
+        .select('*')
         .eq('league_id', leagueId);
 
-      if (error) throw error;
+      if (membersError) throw membersError;
       
-      // Convertir les résultats pour correspondre à l'interface Member
-      const members: Member[] = data.map(member => {
-        return {
+      // Now manually get profiles for each member
+      const members: Member[] = [];
+      for (const member of membersData) {
+        // Get profile data
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('username, full_name, avatar_url')
+          .eq('id', member.user_id)
+          .single();
+          
+        // Get team data if exists
+        const { data: teamData } = await supabase
+          .from('user_teams')
+          .select('id, name, points, rank')
+          .eq('user_id', member.user_id)
+          .eq('league_id', leagueId);
+          
+        members.push({
           ...member,
-          profile: member.profile || { username: 'Utilisateur inconnu', full_name: '', avatar_url: '' },
-          team: member.team?.length > 0 ? member.team[0] : undefined
-        };
-      });
+          profile: profileData || { 
+            username: 'Utilisateur inconnu', 
+            full_name: '', 
+            avatar_url: '' 
+          },
+          team: teamData && teamData.length > 0 ? teamData[0] : undefined
+        });
+      }
       
       return { data: members, error: null };
     } catch (error) {
@@ -164,7 +198,7 @@ export const useLeagues = () => {
 
       if (error) throw error;
 
-      // Ajouter automatiquement le créateur comme membre de la ligue
+      // Add the creator as a member
       const { error: memberError } = await supabase
         .from('league_members')
         .insert({ league_id: data.id, user_id: user.id });
@@ -176,7 +210,15 @@ export const useLeagues = () => {
         description: 'Votre ligue a été créée avec succès',
       });
 
-      return { data, error: null };
+      // Ensure the data conforms to the League type
+      const typedData: League = {
+        ...data,
+        draft_type: data.draft_type as 'manual' | 'auto',
+        season_type: data.season_type as 'weekly' | 'monthly' | 'full',
+        status: data.status as 'draft' | 'active' | 'completed'
+      };
+      
+      return { data: typedData, error: null };
     } catch (error) {
       console.error('Erreur lors de la création de la ligue:', error);
       toast({

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/layout/Header';
@@ -41,7 +40,6 @@ const LeagueDetails = () => {
         if (membersError) throw membersError;
         
         if (membersData) {
-          // Assurez-vous que les données de membres correspondent au type attendu
           const formattedMembers: Member[] = membersData.map(member => ({
             id: member.id,
             league_id: member.league_id,
@@ -57,7 +55,6 @@ const LeagueDetails = () => {
           
           setMembers(formattedMembers);
           
-          // Vérifier si l'utilisateur actuel est membre
           if (user) {
             setIsCurrentUserMember(
               formattedMembers.some(member => member.user_id === user.id)
@@ -91,7 +88,6 @@ const LeagueDetails = () => {
     if (!league || isJoining) return;
     
     if (league.is_private) {
-      // Géré par le modal
       return;
     }
     
@@ -101,10 +97,8 @@ const LeagueDetails = () => {
       if (error) throw error;
       
       if (success) {
-        // Recharger les membres pour voir le nouveau membre
         const { data } = await getLeagueMembers(id!);
         if (data) {
-          // Assurez-vous que les données de membres correspondent au type attendu
           const formattedMembers: Member[] = data.map(member => ({
             id: member.id,
             league_id: member.league_id,
@@ -134,7 +128,6 @@ const LeagueDetails = () => {
     }
   };
   
-  // Helper pour formater la date
   const formatDate = (dateString: string) => {
     try {
       return format(new Date(dateString), 'PPP', { locale: fr });
@@ -226,7 +219,16 @@ const LeagueDetails = () => {
                   </>
                 ) : (
                   league.is_private ? (
-                    <PrivateLeagueJoinModal leagueId={league.id} onSuccess={() => setIsCurrentUserMember(true)} />
+                    <Button onClick={() => {
+                      toast({
+                        title: "Ligue privée",
+                        description: "Cette ligue est privée et nécessite un code d'invitation.",
+                        variant: "default"
+                      });
+                    }}>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Nécessite une invitation
+                    </Button>
                   ) : (
                     <Button onClick={handleJoinLeague} disabled={isJoining}>
                       <UserPlus className="h-4 w-4 mr-2" />

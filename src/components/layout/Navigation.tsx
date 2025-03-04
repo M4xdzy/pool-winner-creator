@@ -76,7 +76,7 @@ export function Navigation() {
               
               <div className="mt-2 px-2">
                 {(!isMobile || isOpen) && (
-                  <CreditsDisplay variant="outline" className="w-full justify-start mb-2" />
+                  <CreditsDisplay credits={1250} className="w-full justify-start mb-2" />
                 )}
                 
                 <Button 
