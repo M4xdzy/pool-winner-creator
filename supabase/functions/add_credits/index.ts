@@ -8,29 +8,29 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Gérer les requêtes OPTIONS pour CORS
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Créer un client Supabase
+    // Create a Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Analyser les données de la requête
+    // Parse request data
     const { user_id, amount, description } = await req.json();
 
     if (!user_id || !amount) {
       return new Response(
-        JSON.stringify({ error: 'user_id et amount sont requis' }),
+        JSON.stringify({ error: 'user_id and amount are required' }),
         { headers: { 'Content-Type': 'application/json', ...corsHeaders }, status: 400 }
       );
     }
 
-    // Mettre à jour les crédits de l'utilisateur
+    // Update user credits
     const { data: profileData, error: profileError } = await supabase
       .from('profiles')
       .select('credits')
@@ -39,7 +39,7 @@ serve(async (req) => {
 
     if (profileError) {
       return new Response(
-        JSON.stringify({ error: `Erreur lors de la récupération du profil: ${profileError.message}` }),
+        JSON.stringify({ error: `Error retrieving profile: ${profileError.message}` }),
         { headers: { 'Content-Type': 'application/json', ...corsHeaders }, status: 500 }
       );
     }
@@ -53,24 +53,24 @@ serve(async (req) => {
 
     if (updateError) {
       return new Response(
-        JSON.stringify({ error: `Erreur lors de la mise à jour des crédits: ${updateError.message}` }),
+        JSON.stringify({ error: `Error updating credits: ${updateError.message}` }),
         { headers: { 'Content-Type': 'application/json', ...corsHeaders }, status: 500 }
       );
     }
 
-    // Enregistrer la transaction
+    // Record the transaction
     const { error: transactionError } = await supabase
       .from('credit_transactions')
       .insert({
         user_id: user_id,
         amount: amount,
         type: 'purchase',
-        description: description || 'Achat de crédits'
+        description: description || 'Credit purchase'
       });
 
     if (transactionError) {
       return new Response(
-        JSON.stringify({ error: `Erreur lors de l'enregistrement de la transaction: ${transactionError.message}` }),
+        JSON.stringify({ error: `Error recording transaction: ${transactionError.message}` }),
         { headers: { 'Content-Type': 'application/json', ...corsHeaders }, status: 500 }
       );
     }
@@ -82,7 +82,7 @@ serve(async (req) => {
 
   } catch (error) {
     return new Response(
-      JSON.stringify({ error: `Erreur interne: ${error.message}` }),
+      JSON.stringify({ error: `Internal error: ${error.message}` }),
       { headers: { 'Content-Type': 'application/json', ...corsHeaders }, status: 500 }
     );
   }

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/layout/Header';
@@ -6,15 +7,16 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ArrowLeft, Users, CalendarDays, MessageSquare, Trophy, Star, Settings, UserPlus } from 'lucide-react';
+import { ArrowLeft, Users, CalendarDays, MessageSquare, Trophy, Star, Settings, UserPlus, KeyRound } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useLeagues, League, Member } from '@/hooks/useLeagues';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from '@/hooks/use-toast';
-import { PrivateLeagueJoinModal } from '@/components/leagues/PrivateLeagueJoinModal';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 
 const LeagueDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -26,6 +28,8 @@ const LeagueDetails = () => {
   const [members, setMembers] = useState<Member[]>([]);
   const [isCurrentUserMember, setIsCurrentUserMember] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [inviteCode, setInviteCode] = useState('');
   
   useEffect(() => {
     const fetchLeagueData = async () => {
@@ -40,24 +44,11 @@ const LeagueDetails = () => {
         if (membersError) throw membersError;
         
         if (membersData) {
-          const formattedMembers: Member[] = membersData.map(member => ({
-            id: member.id,
-            league_id: member.league_id,
-            user_id: member.user_id,
-            joined_at: member.joined_at,
-            profile: member.profile || { 
-              username: 'Utilisateur inconnu', 
-              full_name: '', 
-              avatar_url: '' 
-            },
-            team: member.team
-          }));
-          
-          setMembers(formattedMembers);
+          setMembers(membersData);
           
           if (user) {
             setIsCurrentUserMember(
-              formattedMembers.some(member => member.user_id === user.id)
+              membersData.some(member => member.user_id === user.id)
             );
           }
         }
@@ -88,6 +79,7 @@ const LeagueDetails = () => {
     if (!league || isJoining) return;
     
     if (league.is_private) {
+      setShowInviteDialog(true);
       return;
     }
     
@@ -99,21 +91,13 @@ const LeagueDetails = () => {
       if (success) {
         const { data } = await getLeagueMembers(id!);
         if (data) {
-          const formattedMembers: Member[] = data.map(member => ({
-            id: member.id,
-            league_id: member.league_id,
-            user_id: member.user_id,
-            joined_at: member.joined_at,
-            profile: member.profile || { 
-              username: 'Utilisateur inconnu', 
-              full_name: '', 
-              avatar_url: '' 
-            },
-            team: member.team
-          }));
-          
-          setMembers(formattedMembers);
+          setMembers(data);
           setIsCurrentUserMember(true);
+          
+          toast({
+            title: 'Succès',
+            description: 'Vous avez rejoint la ligue avec succès',
+          });
         }
       }
     } catch (error) {
@@ -121,6 +105,45 @@ const LeagueDetails = () => {
       toast({
         title: 'Erreur',
         description: 'Impossible de rejoindre la ligue',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsJoining(false);
+    }
+  };
+  
+  const handleJoinPrivateLeague = async () => {
+    if (!league || isJoining) return;
+    
+    setIsJoining(true);
+    try {
+      const { success, error } = await joinLeague(id!, inviteCode);
+      if (error) throw error;
+      
+      if (success) {
+        setShowInviteDialog(false);
+        const { data } = await getLeagueMembers(id!);
+        if (data) {
+          setMembers(data);
+          setIsCurrentUserMember(true);
+          
+          toast({
+            title: 'Succès',
+            description: 'Vous avez rejoint la ligue privée avec succès',
+          });
+        }
+      } else {
+        toast({
+          title: 'Erreur',
+          description: 'Code d\'invitation invalide',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Erreur lors de la tentative de rejoindre la ligue privée:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de rejoindre la ligue privée',
         variant: 'destructive',
       });
     } finally {
@@ -211,23 +234,19 @@ const LeagueDetails = () => {
                       Chat de ligue
                     </Button>
                     {user && league.creator_id === user.id && (
-                      <Button>
-                        <Settings className="h-4 w-4 mr-2" />
-                        Gérer la ligue
+                      <Button asChild>
+                        <Link to={`/leagues/${id}/manage`}>
+                          <Settings className="h-4 w-4 mr-2" />
+                          Gérer la ligue
+                        </Link>
                       </Button>
                     )}
                   </>
                 ) : (
                   league.is_private ? (
-                    <Button onClick={() => {
-                      toast({
-                        title: "Ligue privée",
-                        description: "Cette ligue est privée et nécessite un code d'invitation.",
-                        variant: "default"
-                      });
-                    }}>
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Nécessite une invitation
+                    <Button onClick={handleJoinLeague}>
+                      <KeyRound className="h-4 w-4 mr-2" />
+                      Rejoindre avec invitation
                     </Button>
                   ) : (
                     <Button onClick={handleJoinLeague} disabled={isJoining}>
@@ -313,6 +332,36 @@ const LeagueDetails = () => {
           </Tabs>
         </div>
       </main>
+      
+      {/* Private League Join Dialog */}
+      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rejoindre une ligue privée</DialogTitle>
+            <DialogDescription>
+              Entrez le code d'invitation pour rejoindre "{league.name}"
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <Input
+              placeholder="Code d'invitation"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
+              className="w-full"
+            />
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowInviteDialog(false)}>
+              Annuler
+            </Button>
+            <Button onClick={handleJoinPrivateLeague} disabled={isJoining || !inviteCode}>
+              {isJoining ? 'Vérification...' : 'Rejoindre'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

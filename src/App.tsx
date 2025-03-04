@@ -16,7 +16,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 
-// Créez une instance de QueryClient
+// Create a QueryClient instance
 const queryClient = new QueryClient();
 
 const App = () => (

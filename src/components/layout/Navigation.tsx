@@ -61,8 +61,8 @@ export function Navigation() {
             <NavItem href="/" icon={<Home className="h-5 w-5" />} label="Accueil" isCollapsed={!isOpen && isMobile} active={pathname === '/'} />
             <NavItem href="/leagues" icon={<Trophy className="h-5 w-5" />} label="Ligues" isCollapsed={!isOpen && isMobile} active={pathname.startsWith('/leagues')} />
             <NavItem href="/teams" icon={<Shield className="h-5 w-5" />} label="Équipes" isCollapsed={!isOpen && isMobile} active={pathname.startsWith('/teams')} />
-            <NavItem href="#" icon={<BarChart3 className="h-5 w-5" />} label="Statistiques" isCollapsed={!isOpen && isMobile} />
-            <NavItem href="#" icon={<Megaphone className="h-5 w-5" />} label="Actualités" isCollapsed={!isOpen && isMobile} />
+            <NavItem href="/stats" icon={<BarChart3 className="h-5 w-5" />} label="Statistiques" isCollapsed={!isOpen && isMobile} active={pathname.startsWith('/stats')} />
+            <NavItem href="/news" icon={<Megaphone className="h-5 w-5" />} label="Actualités" isCollapsed={!isOpen && isMobile} active={pathname.startsWith('/news')} />
           </div>
           
           <Separator className="my-4" />
@@ -71,7 +71,7 @@ export function Navigation() {
             <>
               <div className="space-y-1">
                 <NavItem href="/profile" icon={<User className="h-5 w-5" />} label="Profil" isCollapsed={!isOpen && isMobile} active={pathname === '/profile'} />
-                <NavItem href="#" icon={<Settings className="h-5 w-5" />} label="Paramètres" isCollapsed={!isOpen && isMobile} />
+                <NavItem href="/settings" icon={<Settings className="h-5 w-5" />} label="Paramètres" isCollapsed={!isOpen && isMobile} active={pathname === '/settings'} />
               </div>
               
               <div className="mt-2 px-2">
