@@ -1,225 +1,257 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
-import { toast } from 'sonner';
 
-interface League {
+export interface League {
   id: string;
   name: string;
-  description: string | null;
+  description?: string;
   creator_id: string;
   max_participants: number;
-  draft_type: string;
-  season_type: string;
+  draft_type: 'manual' | 'auto';
+  season_type: 'weekly' | 'monthly' | 'full';
   is_private: boolean;
-  invitation_code: string | null;
-  status: string;
+  invitation_code?: string;
+  status: 'draft' | 'active' | 'completed';
   created_at: string;
   updated_at: string;
-  // Champs virtuels (non stockés en DB)
-  member_count?: number;
-  is_member?: boolean;
-  is_creator?: boolean;
 }
 
-interface CreateLeagueData {
+export interface Member {
+  id: string;
+  league_id: string;
+  user_id: string;
+  joined_at: string;
+  profile: {
+    username: string;
+    full_name: string;
+    avatar_url: string;
+  };
+  team?: {
+    id: string;
+    name: string;
+    points: number;
+    rank?: number;
+  };
+}
+
+export interface CreateLeagueData {
   name: string;
   description?: string;
   max_participants?: number;
-  draft_type?: string;
-  season_type?: string;
+  season_type?: 'weekly' | 'monthly' | 'full';
+  draft_type?: 'manual' | 'auto';
   is_private?: boolean;
 }
 
-export function useLeagues() {
+export const useLeagues = () => {
+  const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
-  const [myLeagues, setMyLeagues] = useState<League[]>([]);
-  const [publicLeagues, setPublicLeagues] = useState<League[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
 
-  const fetchMyLeagues = useCallback(async () => {
-    if (!user) {
-      setIsLoading(false);
-      return;
-    }
-
+  // Récupère toutes les ligues
+  const getLeagues = async (): Promise<{ data: League[] | null; error: any }> => {
     setIsLoading(true);
-    setError(null);
-
     try {
-      // Récupérer les ligues dont je suis membre ou créateur
       const { data, error } = await supabase
         .from('leagues')
-        .select(`
-          *,
-          league_members!league_id(count)
-        `)
-        .or(`creator_id.eq.${user.id},league_members.user_id.eq.${user.id}`)
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      
-      // Transformer les données pour ajouter le nombre de membres
-      const leaguesWithMemberCount = data.map(league => ({
-        ...league,
-        member_count: league.league_members[0]?.count || 0,
-        is_creator: league.creator_id === user.id,
-        is_member: true
-      }));
-      
-      setMyLeagues(leaguesWithMemberCount);
-    } catch (err: any) {
-      console.error('Error fetching my leagues:', err);
-      setError(err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
-
-  const fetchPublicLeagues = useCallback(async () => {
-    if (!user) {
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Récupérer les ligues publiques dont je ne suis pas membre
-      const { data, error } = await supabase
-        .from('leagues')
-        .select(`
-          *,
-          league_members!league_id(count)
-        `)
-        .eq('is_private', false)
-        .not('creator_id', 'eq', user.id)
-        .not('league_members.user_id', 'eq', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      
-      // Transformer les données pour ajouter le nombre de membres
-      const leaguesWithMemberCount = data.map(league => ({
-        ...league,
-        member_count: league.league_members[0]?.count || 0,
-        is_creator: false,
-        is_member: false
-      }));
-      
-      setPublicLeagues(leaguesWithMemberCount);
-    } catch (err: any) {
-      console.error('Error fetching public leagues:', err);
-      setError(err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    fetchMyLeagues();
-    fetchPublicLeagues();
-  }, [fetchMyLeagues, fetchPublicLeagues]);
-
-  const createLeague = async (data: CreateLeagueData) => {
-    if (!user) return { error: new Error('Utilisateur non authentifié') };
-
-    try {
-      // Générer un code d'invitation si la ligue est privée
-      const invitationCode = data.is_private 
-        ? Math.random().toString(36).substring(2, 10).toUpperCase()
-        : null;
-      
-      // Créer la ligue
-      const { data: newLeagueData, error: leagueError } = await supabase
-        .from('leagues')
-        .insert({
-          name: data.name,
-          description: data.description || null,
-          creator_id: user.id,
-          max_participants: data.max_participants || 12,
-          draft_type: data.draft_type || 'manual',
-          season_type: data.season_type || 'weekly',
-          is_private: data.is_private || false,
-          invitation_code: invitationCode,
-          status: 'draft'
-        })
-        .select()
-        .single();
-
-      if (leagueError) throw leagueError;
-      
-      // Ajouter le créateur comme membre de la ligue
-      const { error: memberError } = await supabase
-        .from('league_members')
-        .insert({
-          league_id: newLeagueData.id,
-          user_id: user.id
-        });
-
-      if (memberError) throw memberError;
-      
-      // Rafraîchir les ligues
-      await fetchMyLeagues();
-      
-      toast.success('Ligue créée avec succès!');
-      return { data: newLeagueData, error: null };
-    } catch (error: any) {
-      toast.error(`Erreur lors de la création de la ligue: ${error.message}`);
+      return { data, error: null };
+    } catch (error) {
+      console.error('Erreur lors de la récupération des ligues:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de récupérer les ligues',
+        variant: 'destructive',
+      });
       return { data: null, error };
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const joinLeague = async (leagueId: string, invitationCode?: string) => {
-    if (!user) return { error: new Error('Utilisateur non authentifié') };
-
+  // Récupère une ligue par son ID
+  const getLeagueById = async (id: string): Promise<{ data: League | null; error: any }> => {
+    setIsLoading(true);
     try {
-      // Vérifier si la ligue existe et si le code d'invitation est valide
-      const { data: leagueData, error: leagueError } = await supabase
+      const { data, error } = await supabase
         .from('leagues')
         .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      console.error(`Erreur lors de la récupération de la ligue ${id}:`, error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de récupérer les détails de la ligue',
+        variant: 'destructive',
+      });
+      return { data: null, error };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Récupère les membres d'une ligue
+  const getLeagueMembers = async (leagueId: string): Promise<{ data: Member[] | null; error: any }> => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('league_members')
+        .select(`
+          *,
+          profile:profiles(username, full_name, avatar_url),
+          team:user_teams(id, name, points, rank)
+        `)
+        .eq('league_id', leagueId);
+
+      if (error) throw error;
+      
+      // Convertir les résultats pour correspondre à l'interface Member
+      const members = data.map(member => {
+        return {
+          ...member,
+          profile: member.profile || { username: 'Utilisateur inconnu', full_name: '', avatar_url: '' },
+          team: member.team || undefined
+        };
+      });
+      
+      return { data: members, error: null };
+    } catch (error) {
+      console.error(`Erreur lors de la récupération des membres de la ligue ${leagueId}:`, error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de récupérer les membres de la ligue',
+        variant: 'destructive',
+      });
+      return { data: null, error };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Crée une nouvelle ligue
+  const createLeague = async (leagueData: CreateLeagueData): Promise<{ data: League | null; error: any }> => {
+    setIsLoading(true);
+    try {
+      if (!user) throw new Error('Vous devez être connecté pour créer une ligue');
+      
+      const newLeagueData = {
+        creator_id: user.id,
+        name: leagueData.name,
+        description: leagueData.description || '',
+        max_participants: leagueData.max_participants || 12,
+        season_type: leagueData.season_type || 'weekly',
+        draft_type: leagueData.draft_type || 'manual',
+        is_private: leagueData.is_private || false,
+        invitation_code: leagueData.is_private ? Math.random().toString(36).substring(2, 10).toUpperCase() : null,
+      };
+
+      const { data, error } = await supabase
+        .from('leagues')
+        .insert(newLeagueData)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Ajouter automatiquement le créateur comme membre de la ligue
+      const { error: memberError } = await supabase
+        .from('league_members')
+        .insert({ league_id: data.id, user_id: user.id });
+
+      if (memberError) throw memberError;
+
+      toast({
+        title: 'Succès',
+        description: 'Votre ligue a été créée avec succès',
+      });
+
+      return { data, error: null };
+    } catch (error) {
+      console.error('Erreur lors de la création de la ligue:', error);
+      toast({
+        title: 'Erreur',
+        description: error.message || 'Impossible de créer la ligue',
+        variant: 'destructive',
+      });
+      return { data: null, error };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Rejoint une ligue
+  const joinLeague = async (leagueId: string, invitationCode?: string): Promise<{ success: boolean; error: any }> => {
+    setIsLoading(true);
+    try {
+      if (!user) throw new Error('Vous devez être connecté pour rejoindre une ligue');
+
+      // Vérifier si la ligue est privée et si un code d'invitation est requis
+      const { data: league, error: leagueError } = await supabase
+        .from('leagues')
+        .select('is_private, invitation_code')
         .eq('id', leagueId)
         .single();
 
       if (leagueError) throw leagueError;
-      
-      if (leagueData.is_private && leagueData.invitation_code !== invitationCode) {
+
+      if (league.is_private && league.invitation_code !== invitationCode) {
         throw new Error('Code d\'invitation invalide');
       }
-      
-      // Ajouter l'utilisateur comme membre de la ligue
-      const { error: memberError } = await supabase
-        .from('league_members')
-        .insert({
-          league_id: leagueId,
-          user_id: user.id
-        });
 
-      if (memberError) throw memberError;
-      
-      // Rafraîchir les ligues
-      await fetchMyLeagues();
-      await fetchPublicLeagues();
-      
-      toast.success('Vous avez rejoint la ligue avec succès!');
-      return { error: null };
-    } catch (error: any) {
-      toast.error(`Erreur lors de l'adhésion à la ligue: ${error.message}`);
-      return { error };
+      // Vérifier si l'utilisateur est déjà membre de la ligue
+      const { data: existingMember, error: memberCheckError } = await supabase
+        .from('league_members')
+        .select('id')
+        .eq('league_id', leagueId)
+        .eq('user_id', user.id);
+
+      if (memberCheckError) throw memberCheckError;
+
+      if (existingMember && existingMember.length > 0) {
+        throw new Error('Vous êtes déjà membre de cette ligue');
+      }
+
+      // Ajouter l'utilisateur comme membre de la ligue
+      const { error: joinError } = await supabase
+        .from('league_members')
+        .insert({ league_id: leagueId, user_id: user.id });
+
+      if (joinError) throw joinError;
+
+      toast({
+        title: 'Succès',
+        description: 'Vous avez rejoint la ligue avec succès',
+      });
+
+      return { success: true, error: null };
+    } catch (error) {
+      console.error('Erreur lors de la tentative de rejoindre la ligue:', error);
+      toast({
+        title: 'Erreur',
+        description: error.message || 'Impossible de rejoindre la ligue',
+        variant: 'destructive',
+      });
+      return { success: false, error };
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return {
-    myLeagues,
-    publicLeagues,
     isLoading,
-    error,
-    fetchMyLeagues,
-    fetchPublicLeagues,
+    getLeagues,
+    getLeagueById,
+    getLeagueMembers,
     createLeague,
-    joinLeague
+    joinLeague,
   };
-}
+};

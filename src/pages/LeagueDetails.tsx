@@ -1,411 +1,317 @@
 
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Header } from '@/components/layout/Header';
 import { Navigation } from '@/components/layout/Navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Trophy, Users, Calendar, Globe, Lock, ChevronLeft } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { ArrowLeft, Users, CalendarDays, MessageSquare, Trophy, Star, Settings, UserPlus } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { useLeagues, League, Member } from '@/hooks/useLeagues';
 import { useAuth } from '@/context/AuthContext';
-import { AuthGuard } from '@/components/auth/AuthGuard';
-
-interface League {
-  id: string;
-  name: string;
-  description: string | null;
-  creator_id: string;
-  max_participants: number;
-  draft_type: string;
-  season_type: string;
-  is_private: boolean;
-  invitation_code: string | null;
-  status: string;
-  created_at: string;
-  updated_at: string;
-  creator?: {
-    username: string;
-    avatar_url: string | null;
-  };
-  members?: Member[];
-  member_count?: number;
-}
-
-interface Member {
-  id: string;
-  user_id: string;
-  joined_at: string;
-  profile: {
-    username: string;
-    full_name: string | null;
-    avatar_url: string | null;
-  };
-  team?: {
-    id: string;
-    name: string;
-    points: number;
-    rank: number | null;
-  };
-}
+import { toast } from '@/hooks/use-toast';
+import { PrivateLeagueJoinModal } from '@/components/leagues/PrivateLeagueJoinModal';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 const LeagueDetails = () => {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const { getLeagueById, getLeagueMembers, joinLeague, isLoading: leagueLoading } = useLeagues();
   const { user } = useAuth();
+  const navigate = useNavigate();
+  
   const [league, setLeague] = useState<League | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
+  const [members, setMembers] = useState<Member[]>([]);
+  const [isCurrentUserMember, setIsCurrentUserMember] = useState(false);
+  const [isJoining, setIsJoining] = useState(false);
+  
   useEffect(() => {
-    const fetchLeagueDetails = async () => {
+    const fetchLeagueData = async () => {
       if (!id) return;
       
-      setIsLoading(true);
-      setError(null);
-      
       try {
-        // Récupérer les détails de la ligue
-        const { data: leagueData, error: leagueError } = await supabase
-          .from('leagues')
-          .select(`
-            *,
-            creator:profiles!creator_id(username, avatar_url)
-          `)
-          .eq('id', id)
-          .single();
+        const { data, error } = await getLeagueById(id);
+        if (error) throw error;
+        if (data) setLeague(data);
         
-        if (leagueError) throw leagueError;
-        
-        // Récupérer les membres de la ligue
-        const { data: membersData, error: membersError } = await supabase
-          .from('league_members')
-          .select(`
-            *,
-            profile:profiles!user_id(username, full_name, avatar_url),
-            team:user_teams!inner(id, name, points, rank)
-          `)
-          .eq('league_id', id)
-          .order('joined_at', { ascending: true });
-        
+        const { data: membersData, error: membersError } = await getLeagueMembers(id);
         if (membersError) throw membersError;
         
-        setLeague({
-          ...leagueData,
-          members: membersData,
-          member_count: membersData.length
+        if (membersData) {
+          // Assurez-vous que les données de membres correspondent au type attendu
+          const formattedMembers: Member[] = membersData.map(member => ({
+            id: member.id,
+            league_id: member.league_id,
+            user_id: member.user_id,
+            joined_at: member.joined_at,
+            profile: member.profile || { 
+              username: 'Utilisateur inconnu', 
+              full_name: '', 
+              avatar_url: '' 
+            },
+            team: member.team
+          }));
+          
+          setMembers(formattedMembers);
+          
+          // Vérifier si l'utilisateur actuel est membre
+          if (user) {
+            setIsCurrentUserMember(
+              formattedMembers.some(member => member.user_id === user.id)
+            );
+          }
+        }
+      } catch (error) {
+        console.error('Erreur lors du chargement des données de la ligue:', error);
+        toast({
+          title: 'Erreur',
+          description: 'Impossible de charger les détails de la ligue',
+          variant: 'destructive',
         });
-      } catch (err: any) {
-        console.error('Error fetching league details:', err);
-        setError(err.message);
-      } finally {
-        setIsLoading(false);
       }
     };
     
-    fetchLeagueDetails();
-  }, [id]);
-
-  if (isLoading) {
-    return (
-      <AuthGuard>
-        <div className="min-h-screen bg-background text-foreground">
-          <Header />
-          <Navigation />
+    fetchLeagueData();
+  }, [id, user]);
+  
+  const handleJoinLeague = async () => {
+    if (!user) {
+      toast({
+        title: 'Connexion requise',
+        description: 'Vous devez être connecté pour rejoindre une ligue',
+        variant: 'destructive',
+      });
+      navigate('/login');
+      return;
+    }
+    
+    if (!league || isJoining) return;
+    
+    if (league.is_private) {
+      // Géré par le modal
+      return;
+    }
+    
+    setIsJoining(true);
+    try {
+      const { success, error } = await joinLeague(id!);
+      if (error) throw error;
+      
+      if (success) {
+        // Recharger les membres pour voir le nouveau membre
+        const { data } = await getLeagueMembers(id!);
+        if (data) {
+          // Assurez-vous que les données de membres correspondent au type attendu
+          const formattedMembers: Member[] = data.map(member => ({
+            id: member.id,
+            league_id: member.league_id,
+            user_id: member.user_id,
+            joined_at: member.joined_at,
+            profile: member.profile || { 
+              username: 'Utilisateur inconnu', 
+              full_name: '', 
+              avatar_url: '' 
+            },
+            team: member.team
+          }));
           
-          <main className="pt-24 pb-16 lg:pl-64 pl-[74px] pr-4 lg:pr-6">
-            <div className="max-w-6xl mx-auto">
-              <div className="animate-pulse">
-                <Skeleton className="h-10 w-64 mb-2" />
-                <Skeleton className="h-4 w-1/3 mb-8" />
-                
-                <div className="grid gap-6 md:grid-cols-3">
-                  <Skeleton className="h-40 rounded-lg" />
-                  <Skeleton className="h-40 rounded-lg" />
-                  <Skeleton className="h-40 rounded-lg" />
-                </div>
-              </div>
-            </div>
-          </main>
-        </div>
-      </AuthGuard>
-    );
-  }
-
-  if (error || !league) {
-    return (
-      <AuthGuard>
-        <div className="min-h-screen bg-background text-foreground">
-          <Header />
-          <Navigation />
-          
-          <main className="pt-24 pb-16 lg:pl-64 pl-[74px] pr-4 lg:pr-6">
-            <div className="max-w-6xl mx-auto">
-              <div className="text-center py-12">
-                <h2 className="text-2xl font-bold mb-2">Erreur de chargement</h2>
-                <p className="text-muted-foreground mb-6">{error || "La ligue n'a pas pu être trouvée"}</p>
-                <Button onClick={() => navigate('/leagues')}>
-                  <ChevronLeft className="h-4 w-4 mr-2" />
-                  Retour aux ligues
-                </Button>
-              </div>
-            </div>
-          </main>
-        </div>
-      </AuthGuard>
-    );
-  }
-
-  const getSeasonTypeLabel = (type: string) => {
-    switch(type) {
-      case 'weekly': return 'Hebdomadaire';
-      case 'monthly': return 'Mensuelle';
-      case 'full': return 'Saison complète';
-      default: return type;
+          setMembers(formattedMembers);
+          setIsCurrentUserMember(true);
+        }
+      }
+    } catch (error) {
+      console.error('Erreur lors de la tentative de rejoindre la ligue:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de rejoindre la ligue',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsJoining(false);
     }
   };
   
-  const getDraftTypeLabel = (type: string) => {
-    switch(type) {
-      case 'manual': return 'Manuel';
-      case 'auto': return 'Automatique';
-      default: return type;
+  // Helper pour formater la date
+  const formatDate = (dateString: string) => {
+    try {
+      return format(new Date(dateString), 'PPP', { locale: fr });
+    } catch (e) {
+      return dateString;
     }
   };
   
-  const getStatusLabel = (status: string) => {
-    switch(status) {
-      case 'draft': return 'En préparation';
-      case 'active': return 'Active';
-      case 'completed': return 'Terminée';
-      default: return status;
-    }
-  };
-
-  const isCreator = league.creator_id === user?.id;
-  const isMember = league.members?.some(member => member.user_id === user?.id) || false;
-
-  return (
-    <AuthGuard>
+  if (!league) {
+    return (
       <div className="min-h-screen bg-background text-foreground">
         <Header />
         <Navigation />
-        
         <main className="pt-24 pb-16 lg:pl-64 pl-[74px] pr-4 lg:pr-6">
-          <div className="max-w-6xl mx-auto">
-            <div className="mb-6 flex items-center">
-              <Button variant="ghost" onClick={() => navigate('/leagues')} className="mr-4">
-                <ChevronLeft className="h-4 w-4 mr-2" />
-                Retour
-              </Button>
-              
-              <div>
-                <h1 className="text-3xl font-bold">{league.name}</h1>
-                <div className="flex items-center mt-1">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    league.status === 'active' ? 'bg-green-100 text-green-800' : 
-                    league.status === 'completed' ? 'bg-blue-100 text-blue-800' : 
-                    'bg-amber-100 text-amber-800'
-                  }`}>
-                    {getStatusLabel(league.status)}
-                  </span>
-                  <span className="ml-3 text-sm text-muted-foreground flex items-center">
-                    {league.is_private ? (
-                      <>
-                        <Lock className="h-3 w-3 mr-1" />
-                        <span>Privée</span>
-                      </>
-                    ) : (
-                      <>
-                        <Globe className="h-3 w-3 mr-1" />
-                        <span>Publique</span>
-                      </>
-                    )}
-                  </span>
-                </div>
-              </div>
-            </div>
-            
-            <div className="grid gap-6 md:grid-cols-3 mb-8">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Informations</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <dl className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Type de saison:</dt>
-                      <dd>{getSeasonTypeLabel(league.season_type)}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Type de draft:</dt>
-                      <dd>{getDraftTypeLabel(league.draft_type)}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Participants:</dt>
-                      <dd>{league.member_count} / {league.max_participants}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Créateur:</dt>
-                      <dd>{league.creator?.username}</dd>
-                    </div>
-                    {league.is_private && isCreator && (
-                      <div className="flex justify-between">
-                        <dt className="text-muted-foreground">Code d'invitation:</dt>
-                        <dd className="font-mono">{league.invitation_code}</dd>
-                      </div>
-                    )}
-                  </dl>
-                  
-                  {league.description && (
-                    <div className="mt-4 pt-4 border-t border-border">
-                      <p className="text-sm">{league.description}</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-              
-              <Card className="md:col-span-2">
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between items-center">
-                    <CardTitle className="text-base">Membres</CardTitle>
-                    <span className="text-sm text-muted-foreground">
-                      {league.member_count} / {league.max_participants}
-                    </span>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-3">
-                    {league.members && league.members.map((member) => (
-                      <li key={member.id} className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <Avatar className="h-8 w-8 mr-3">
-                            <AvatarImage src={member.profile.avatar_url || ''} />
-                            <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                              {member.profile.username.substring(0, 2).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="text-sm font-medium">
-                              {member.profile.username}
-                              {member.user_id === league.creator_id && (
-                                <span className="ml-2 text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">
-                                  Créateur
-                                </span>
-                              )}
-                            </p>
-                            {member.team && (
-                              <p className="text-xs text-muted-foreground">
-                                Équipe: {member.team.name}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        {member.team && (
-                          <div className="text-right">
-                            <p className="text-sm font-medium">{member.team.points} pts</p>
-                            {member.team.rank && (
-                              <p className="text-xs text-muted-foreground">
-                                Rang: #{member.team.rank}
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            </div>
-            
-            <Tabs defaultValue="standings" className="animate-fade-in">
-              <TabsList className="mb-6">
-                <TabsTrigger value="standings">Classement</TabsTrigger>
-                <TabsTrigger value="schedule">Calendrier</TabsTrigger>
-                <TabsTrigger value="chat">Discussion</TabsTrigger>
-                {isCreator && <TabsTrigger value="settings">Paramètres</TabsTrigger>}
-              </TabsList>
-              
-              <TabsContent value="standings" className="space-y-6 animate-slide-up">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Classement de la ligue</CardTitle>
-                    <CardDescription>
-                      Positions et performances des équipes
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {/* Contenu à implémenter */}
-                    <div className="text-center py-8 text-muted-foreground">
-                      {league.status === 'draft' ? (
-                        "La ligue est en préparation. Le classement sera disponible une fois la saison commencée."
-                      ) : (
-                        "Aucune donnée de classement disponible pour le moment."
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-              
-              <TabsContent value="schedule" className="space-y-6 animate-slide-up">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Calendrier des matchs</CardTitle>
-                    <CardDescription>
-                      Prochains matchs et résultats
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {/* Contenu à implémenter */}
-                    <div className="text-center py-8 text-muted-foreground">
-                      Le calendrier sera disponible une fois la saison commencée.
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-              
-              <TabsContent value="chat" className="space-y-6 animate-slide-up">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Discussion de ligue</CardTitle>
-                    <CardDescription>
-                      Discutez avec les autres membres de la ligue
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {/* Contenu à implémenter */}
-                    <div className="text-center py-8 text-muted-foreground">
-                      La fonctionnalité de chat sera bientôt disponible.
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-              
-              {isCreator && (
-                <TabsContent value="settings" className="space-y-6 animate-slide-up">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Paramètres de la ligue</CardTitle>
-                      <CardDescription>
-                        Gérez les paramètres et options de votre ligue
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      {/* Contenu à implémenter */}
-                      <div className="text-center py-8 text-muted-foreground">
-                        Les paramètres avancés de la ligue seront bientôt disponibles.
-                      </div>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-              )}
-            </Tabs>
+          <div className="max-w-6xl mx-auto text-center py-12">
+            {leagueLoading ? (
+              <p>Chargement des détails de la ligue...</p>
+            ) : (
+              <>
+                <h2 className="text-2xl font-bold mb-2">Ligue non trouvée</h2>
+                <p className="text-muted-foreground mb-4">
+                  La ligue que vous recherchez n'existe pas ou vous n'avez pas accès à celle-ci.
+                </p>
+                <Button asChild>
+                  <Link to="/leagues">
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Retour aux ligues
+                  </Link>
+                </Button>
+              </>
+            )}
           </div>
         </main>
       </div>
-    </AuthGuard>
+    );
+  }
+  
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <Header />
+      <Navigation />
+      
+      <main className="pt-24 pb-16 lg:pl-64 pl-[74px] pr-4 lg:pr-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-6">
+            <Button asChild variant="ghost" className="mb-4">
+              <Link to="/leagues">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Retour aux ligues
+              </Link>
+            </Button>
+            
+            <div className="flex flex-col md:flex-row md:items-center justify-between">
+              <div>
+                <div className="flex items-center space-x-2 mb-1">
+                  <h1 className="text-3xl font-bold tracking-tight">{league.name}</h1>
+                  {league.is_private && (
+                    <Badge variant="outline" className="ml-2">Privée</Badge>
+                  )}
+                </div>
+                <p className="text-muted-foreground">
+                  {league.description || `Une ligue ${league.season_type === 'weekly' ? 'hebdomadaire' : league.season_type === 'monthly' ? 'mensuelle' : 'de saison complète'}`}
+                </p>
+                <div className="flex items-center space-x-4 mt-2">
+                  <div className="flex items-center text-sm text-muted-foreground">
+                    <Users className="h-4 w-4 mr-1" />
+                    <span>{members.length}/{league.max_participants} membres</span>
+                  </div>
+                  <div className="flex items-center text-sm text-muted-foreground">
+                    <CalendarDays className="h-4 w-4 mr-1" />
+                    <span>Créée le {formatDate(league.created_at)}</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-4 md:mt-0 flex flex-wrap gap-2">
+                {isCurrentUserMember ? (
+                  <>
+                    <Button variant="outline">
+                      <MessageSquare className="h-4 w-4 mr-2" />
+                      Chat de ligue
+                    </Button>
+                    {user && league.creator_id === user.id && (
+                      <Button>
+                        <Settings className="h-4 w-4 mr-2" />
+                        Gérer la ligue
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  league.is_private ? (
+                    <PrivateLeagueJoinModal leagueId={league.id} onSuccess={() => setIsCurrentUserMember(true)} />
+                  ) : (
+                    <Button onClick={handleJoinLeague} disabled={isJoining}>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      {isJoining ? 'Rejoignez la ligue...' : 'Rejoindre la ligue'}
+                    </Button>
+                  )
+                )}
+              </div>
+            </div>
+          </div>
+          
+          <Separator className="my-6" />
+          
+          <Tabs defaultValue="members" className="animate-fade-in">
+            <TabsList className="mb-6">
+              <TabsTrigger value="members">Membres</TabsTrigger>
+              <TabsTrigger value="standings">Classement</TabsTrigger>
+              <TabsTrigger value="draft">Draft</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="members" className="space-y-6">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {members.map((member) => (
+                  <Card key={member.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center space-x-4">
+                        <Avatar>
+                          <AvatarImage src={member.profile.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${member.profile.username}`} />
+                          <AvatarFallback>{member.profile.username.substring(0, 2).toUpperCase()}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="font-medium">{member.profile.username}</div>
+                          <div className="text-sm text-muted-foreground">{member.profile.full_name || 'Membre'}</div>
+                          {league.creator_id === member.user_id && (
+                            <Badge variant="secondary" className="mt-1">
+                              <Star className="h-3 w-3 mr-1" />
+                              Créateur
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      {member.team && (
+                        <div className="mt-3 pt-3 border-t">
+                          <div className="text-sm font-medium flex items-center">
+                            <Trophy className="h-3 w-3 mr-1 text-amber-500" />
+                            Équipe: {member.team.name}
+                          </div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {member.team.points} points {member.team.rank && `· Rang #${member.team.rank}`}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="standings">
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="w-16 h-16 mb-4 rounded-full bg-muted flex items-center justify-center">
+                  <Trophy className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-medium mb-1">Classement à venir</h3>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  Le classement sera disponible une fois que la ligue sera active et que les équipes commenceront à accumuler des points.
+                </p>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="draft">
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="w-16 h-16 mb-4 rounded-full bg-muted flex items-center justify-center">
+                  <Trophy className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <h3 className="text-lg font-medium mb-1">Draft à venir</h3>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  Le draft sera disponible une fois que suffisamment de joueurs auront rejoint la ligue.
+                </p>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </main>
+    </div>
   );
 };
 

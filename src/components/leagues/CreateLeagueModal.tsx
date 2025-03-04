@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useLeagues } from '@/hooks/useLeagues';
+import { useLeagues, CreateLeagueData } from '@/hooks/useLeagues';
 import { PlusCircle, Loader2 } from 'lucide-react';
 
 const createLeagueSchema = z.object({
@@ -51,10 +52,21 @@ export function CreateLeagueModal({ triggerComponent, onSuccess }: CreateLeagueM
     try {
       if (!data.name) {
         form.setError('name', { message: 'Le nom de la ligue est requis' });
+        setIsLoading(false);
         return;
       }
       
-      const result = await createLeague(data);
+      // S'assurer que name est bien défini dans leagueData
+      const leagueData: CreateLeagueData = {
+        name: data.name, // Toujours inclure le nom
+        description: data.description,
+        max_participants: data.max_participants,
+        season_type: data.season_type,
+        draft_type: data.draft_type,
+        is_private: data.is_private,
+      };
+      
+      const result = await createLeague(leagueData);
       if (!result.error) {
         setIsOpen(false);
         if (onSuccess) onSuccess();

@@ -1,84 +1,97 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
-import { toast } from 'sonner';
 
-export function useCredits() {
-  const { user } = useAuth();
-  const [credits, setCredits] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+export interface Transaction {
+  id: string;
+  user_id: string;
+  amount: number;
+  type: 'purchase' | 'reward' | 'expense';
+  description: string;
+  created_at: string;
+}
 
-  const fetchCredits = useCallback(async () => {
+export const useCredits = () => {
+  const [isLoading, setIsLoading] = useState(false);
+  const { user, profile, refreshProfile } = useAuth();
+
+  // Récupère les transactions de crédits de l'utilisateur
+  const getTransactions = async (): Promise<{ data: Transaction[] | null; error: any }> => {
     if (!user) {
-      setIsLoading(false);
-      return;
+      return { data: null, error: new Error('Utilisateur non connecté') };
     }
 
     setIsLoading(true);
-    setError(null);
-
     try {
       const { data, error } = await supabase
-        .from('profiles')
-        .select('credits')
-        .eq('id', user.id)
-        .single();
+        .from('credit_transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setCredits(data.credits);
-    } catch (err: any) {
-      console.error('Error fetching credits:', err);
-      setError(err);
+      return { data, error: null };
+    } catch (error) {
+      console.error('Erreur lors de la récupération des transactions:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible de récupérer vos transactions',
+        variant: 'destructive',
+      });
+      return { data: null, error };
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  };
 
-  useEffect(() => {
-    fetchCredits();
-  }, [fetchCredits]);
+  // Ajoute des crédits à l'utilisateur
+  const addCredits = async (amount: number): Promise<{ success: boolean; newCredits?: number; error: any }> => {
+    if (!user) {
+      toast({
+        title: 'Erreur',
+        description: 'Vous devez être connecté pour acheter des crédits',
+        variant: 'destructive',
+      });
+      return { success: false, error: new Error('Utilisateur non connecté') };
+    }
 
-  const addCredits = async (amount: number, description: string) => {
-    if (!user) return { error: new Error('Utilisateur non authentifié') };
-
+    setIsLoading(true);
     try {
-      // Ajouter les crédits au profil directement avec une mise à jour
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ credits: (credits || 0) + amount })
-        .eq('id', user.id);
+      // Appel à l'edge function pour ajouter des crédits
+      const { data, error } = await supabase.functions.invoke('add_credits', {
+        body: { user_id: user.id, amount, description: 'Achat de crédits' }
+      });
 
-      if (profileError) throw profileError;
+      if (error) throw error;
 
-      // Enregistrer la transaction
-      const { error: transactionError } = await supabase
-        .from('credit_transactions')
-        .insert({
-          user_id: user.id,
-          amount: amount,
-          type: 'purchase',
-          description: description
-        });
+      // Rafraîchir le profil pour mettre à jour le nombre de crédits affiché
+      await refreshProfile();
 
-      if (transactionError) throw transactionError;
-      
-      await fetchCredits();
-      toast.success(`${amount} crédits ajoutés avec succès!`);
-      
-      return { error: null };
-    } catch (error: any) {
-      toast.error(`Erreur lors de l'ajout de crédits: ${error.message}`);
-      return { error };
+      toast({
+        title: 'Succès',
+        description: `Vous avez acheté ${amount} crédits avec succès`,
+      });
+
+      return { success: true, newCredits: data.credits, error: null };
+    } catch (error) {
+      console.error('Erreur lors de l\'ajout de crédits:', error);
+      toast({
+        title: 'Erreur',
+        description: 'Impossible d\'ajouter des crédits',
+        variant: 'destructive',
+      });
+      return { success: false, error };
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return {
-    credits,
+    credits: profile?.credits || 0,
     isLoading,
-    error,
-    fetchCredits,
-    addCredits
+    getTransactions,
+    addCredits,
   };
-}
+};
