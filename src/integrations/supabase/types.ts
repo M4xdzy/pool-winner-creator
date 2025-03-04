@@ -9,16 +9,371 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      credit_transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          description: string | null
+          id: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      league_members: {
+        Row: {
+          id: string
+          joined_at: string
+          league_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          league_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          league_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "league_members_league_id_fkey"
+            columns: ["league_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      league_messages: {
+        Row: {
+          created_at: string
+          id: string
+          league_id: string
+          message: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          league_id: string
+          message: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          league_id?: string
+          message?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "league_messages_league_id_fkey"
+            columns: ["league_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leagues: {
+        Row: {
+          created_at: string
+          creator_id: string
+          description: string | null
+          draft_type: string
+          id: string
+          invitation_code: string | null
+          is_private: boolean
+          max_participants: number
+          name: string
+          season_type: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          creator_id: string
+          description?: string | null
+          draft_type?: string
+          id?: string
+          invitation_code?: string | null
+          is_private?: boolean
+          max_participants?: number
+          name: string
+          season_type?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          creator_id?: string
+          description?: string | null
+          draft_type?: string
+          id?: string
+          invitation_code?: string | null
+          is_private?: boolean
+          max_participants?: number
+          name?: string
+          season_type?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      nhl_players: {
+        Row: {
+          active: boolean
+          id: number
+          name: string
+          position: string
+          stats_url: string | null
+          team_id: number | null
+        }
+        Insert: {
+          active?: boolean
+          id?: number
+          name: string
+          position: string
+          stats_url?: string | null
+          team_id?: number | null
+        }
+        Update: {
+          active?: boolean
+          id?: number
+          name?: string
+          position?: string
+          stats_url?: string | null
+          team_id?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nhl_players_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "nhl_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nhl_teams: {
+        Row: {
+          code: string
+          id: number
+          logo_url: string | null
+          name: string
+        }
+        Insert: {
+          code: string
+          id?: number
+          logo_url?: string | null
+          name: string
+        }
+        Update: {
+          code?: string
+          id?: number
+          logo_url?: string | null
+          name?: string
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          created_at: string
+          id: string
+          is_read: boolean
+          message: string
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          message: string
+          title: string
+          type?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          message?: string
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          credits: number
+          full_name: string | null
+          id: string
+          team_name: string | null
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          credits?: number
+          full_name?: string | null
+          id: string
+          team_name?: string | null
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          credits?: number
+          full_name?: string | null
+          id?: string
+          team_name?: string | null
+          updated_at?: string
+          username?: string
+        }
+        Relationships: []
+      }
+      team_players: {
+        Row: {
+          id: string
+          player_id: number
+          selected_at: string
+          team_id: string
+        }
+        Insert: {
+          id?: string
+          player_id: number
+          selected_at?: string
+          team_id: string
+        }
+        Update: {
+          id?: string
+          player_id?: number
+          selected_at?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_players_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "nhl_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_players_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "user_teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_teams: {
+        Row: {
+          created_at: string
+          id: string
+          league_id: string
+          name: string
+          points: number
+          rank: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          league_id: string
+          name: string
+          points?: number
+          rank?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          league_id?: string
+          name?: string
+          points?: number
+          rank?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_teams_league_id_fkey"
+            columns: ["league_id"]
+            isOneToOne: false
+            referencedRelation: "leagues"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _user_id: string
+          _role: Database["public"]["Enums"]["app_role"]
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
