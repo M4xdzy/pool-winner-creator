@@ -124,26 +124,26 @@ export function useLeagues() {
     fetchPublicLeagues();
   }, [fetchMyLeagues, fetchPublicLeagues]);
 
-  const createLeague = async (leagueData: CreateLeagueData) => {
+  const createLeague = async (data: CreateLeagueData) => {
     if (!user) return { error: new Error('Utilisateur non authentifié') };
 
     try {
       // Générer un code d'invitation si la ligue est privée
-      const invitationCode = leagueData.is_private 
+      const invitationCode = data.is_private 
         ? Math.random().toString(36).substring(2, 10).toUpperCase()
         : null;
       
       // Créer la ligue
-      const { data: leagueData, error: leagueError } = await supabase
+      const { data: newLeagueData, error: leagueError } = await supabase
         .from('leagues')
         .insert({
-          name: leagueData.name,
-          description: leagueData.description || null,
+          name: data.name,
+          description: data.description || null,
           creator_id: user.id,
-          max_participants: leagueData.max_participants || 12,
-          draft_type: leagueData.draft_type || 'manual',
-          season_type: leagueData.season_type || 'weekly',
-          is_private: leagueData.is_private || false,
+          max_participants: data.max_participants || 12,
+          draft_type: data.draft_type || 'manual',
+          season_type: data.season_type || 'weekly',
+          is_private: data.is_private || false,
           invitation_code: invitationCode,
           status: 'draft'
         })
@@ -156,7 +156,7 @@ export function useLeagues() {
       const { error: memberError } = await supabase
         .from('league_members')
         .insert({
-          league_id: leagueData.id,
+          league_id: newLeagueData.id,
           user_id: user.id
         });
 
@@ -166,7 +166,7 @@ export function useLeagues() {
       await fetchMyLeagues();
       
       toast.success('Ligue créée avec succès!');
-      return { data: leagueData, error: null };
+      return { data: newLeagueData, error: null };
     } catch (error: any) {
       toast.error(`Erreur lors de la création de la ligue: ${error.message}`);
       return { data: null, error };

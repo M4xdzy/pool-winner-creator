@@ -44,11 +44,11 @@ export function useCredits() {
     if (!user) return { error: new Error('Utilisateur non authentifié') };
 
     try {
-      // Ajouter les crédits au profil
-      const { error: profileError } = await supabase.rpc('add_credits', {
-        user_id_param: user.id,
-        amount_param: amount
-      });
+      // Ajouter les crédits au profil directement avec une mise à jour
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ credits: (credits || 0) + amount })
+        .eq('id', user.id);
 
       if (profileError) throw profileError;
 

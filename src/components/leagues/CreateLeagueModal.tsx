@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -50,8 +49,13 @@ export function CreateLeagueModal({ triggerComponent, onSuccess }: CreateLeagueM
   const onSubmit = async (data: CreateLeagueFormValues) => {
     setIsLoading(true);
     try {
-      const { error } = await createLeague(data);
-      if (!error) {
+      if (!data.name) {
+        form.setError('name', { message: 'Le nom de la ligue est requis' });
+        return;
+      }
+      
+      const result = await createLeague(data);
+      if (!result.error) {
         setIsOpen(false);
         if (onSuccess) onSuccess();
       }
